@@ -634,7 +634,10 @@ export default function SnackPazGame() {
       })
         .then((r) => r.json())
         .then((d) => {
-          if (d.ok) toast.success('امتیاز در اکانت شما ذخیره شد ✅');
+          if (d.ok) {
+            if (d.best) toast.success('🏆 رکورد جدیدت در جدول ثبت شد!');
+            else toast('امتیازت ذخیره شد (رکورد قبلی‌ت بهتره)');
+          }
         })
         .catch(() => {});
     }
