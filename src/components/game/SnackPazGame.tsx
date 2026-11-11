@@ -88,6 +88,7 @@ const KID_NAMES = ['سینا', 'آرش', 'پوریا', 'میثم', 'رها', 'ک
 const MAP_URL =
   'https://www.google.com/maps/search/?api=1&query=' +
   encodeURIComponent('بازار بزرگ ناصر خسرو مسجد نور تهران');
+const LOCATIONS = ['بازار ناصر خسرو', 'پارک شهر', 'جشنواره خیابانی'];
 const DEV_NAME = 'امیراحمد بابائی';
 const DEV_HANDLE = 'amirahmadbabee';
 
@@ -122,6 +123,10 @@ type Game = {
   muted: boolean;
   rushUntil: number;
   runId: number;
+  day: number;
+  dayServed: number;
+  dayTarget: number;
+  location: number;
 };
 
 function loadHigh(): number {
@@ -139,8 +144,8 @@ function makeOrder(productId: ProductId): string[] {
   return [...ings].sort(() => Math.random() - 0.5).slice(0, n).map((i) => i.id);
 }
 
-function makeCustomer(id: number, score: number, rush: boolean, isKid: boolean, now: number): Customer {
-  const base = rush ? 8000 : Math.max(9000, 16000 - score * 8);
+function makeCustomer(id: number, day: number, rush: boolean, isKid: boolean, now: number): Customer {
+  const base = rush ? 7500 : Math.max(7000, 15000 - day * 500);
   // احتمال مساوی برای هر محصول
   const productId = isKid ? PRODUCT_IDS[Math.floor(Math.random() * 3)] : PRODUCT_IDS[Math.floor(Math.random() * 3)];
   return {
@@ -231,6 +236,51 @@ function playSound(kind: string, muted: boolean) {
   }
 }
 
+// موسیقی پس‌زمینه (ملودیِ شادِ حلقی)
+const MELODY = [523.25, 587.33, 659.25, 783.99, 659.25, 587.33, 523.25, 440, 523.25, 659.25, 783.99, 880, 783.99, 659.25, 587.33, 523.25];
+let musicTimer: ReturnType<typeof setInterval> | null = null;
+let musicIdx = 0;
+function playNote(ctx: AudioContext, freq: number, dur: number, type: OscillatorType, vol: number) {
+  try {
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = type;
+    o.frequency.value = freq;
+    o.connect(g);
+    g.connect(ctx.destination);
+    const t = ctx.currentTime;
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.start(t);
+    o.stop(t + dur);
+  } catch {
+    /* ignore */
+  }
+}
+function startMusic() {
+  if (musicTimer) return;
+  const ctx = getCtx();
+  if (!ctx) return;
+  try {
+    ctx.resume();
+  } catch {
+    /* ignore */
+  }
+  const beat = 360;
+  musicTimer = setInterval(() => {
+    const f = MELODY[musicIdx % MELODY.length];
+    playNote(ctx, f, (beat / 1000) * 0.85, 'triangle', 0.05);
+    if (musicIdx % 4 === 0) playNote(ctx, f / 2, (beat / 1000) * 1.6, 'sine', 0.04);
+    musicIdx += 1;
+  }, beat);
+}
+function stopMusic() {
+  if (musicTimer) {
+    clearInterval(musicTimer);
+    musicTimer = null;
+  }
+}
+
 function initialGame(): Game {
   return {
     screen: 'menu',
@@ -251,6 +301,10 @@ function initialGame(): Game {
     muted: false,
     rushUntil: 0,
     runId: 0,
+    day: 1,
+    dayServed: 0,
+    dayTarget: 6,
+    location: 0,
   };
 }
 
@@ -283,8 +337,8 @@ function tick(prev: Game): Game {
 
   if (now >= nextSpawnAt && customers.length < 5) {
     const interval = inRush
-      ? Math.max(1200, 2600 - prev.score * 6)
-      : Math.max(1700, 3600 - prev.score * 8);
+      ? Math.max(1100, 2400 - prev.day * 120)
+      : Math.max(1500, 3300 - prev.day * 160);
     nextSpawnAt = now + interval;
     let isKid = false;
     kidCounter -= 1;
@@ -292,7 +346,7 @@ function tick(prev: Game): Game {
       isKid = true;
       kidCounter = 3 + Math.floor(Math.random() * 3);
     }
-    customers = [...customers, makeCustomer(nextCid, prev.score, inRush, isKid, now)];
+    customers = [...customers, makeCustomer(nextCid, prev.day, inRush, isKid, now)];
     nextCid += 1;
   }
 
@@ -406,6 +460,12 @@ export default function SnackPazGame() {
     const newServedCount = g.servedCount + 1;
     const triggerRush = newServedCount % 8 === 0;
     if (triggerRush) toast('ساعت اوج! 🌶️ همه میان!');
+    if (g.dayServed + 1 >= g.dayTarget) {
+      const nextDay = g.day + 1;
+      const nextLoc = Math.floor((nextDay - 1) / 3) % 3;
+      if (nextLoc !== g.location) toast.success(`🗺️ لوکیشن جدید: ${LOCATIONS[nextLoc]}!`);
+      else toast.success(`مرحله ${g.day} کامل شد! 🎉`);
+    }
 
     setGame((prev) => {
       const pCombo = prev.combo + 1;
@@ -413,6 +473,9 @@ export default function SnackPazGame() {
       const base = isKid ? 50 : PRODUCTS[cust.productId].baseScore;
       const points = base * pMult;
       const coinsGain = isKid ? 0 : 1 + (pMult >= 3 ? 1 : 0);
+      const newDayServed = prev.dayServed + 1;
+      const dayComplete = newDayServed >= prev.dayTarget;
+      const newDay = dayComplete ? prev.day + 1 : prev.day;
       return {
         ...prev,
         cup: [],
@@ -424,6 +487,11 @@ export default function SnackPazGame() {
         servedCount: newServedCount,
         rushUntil: triggerRush ? now + 12000 : prev.rushUntil,
         selectedId: null,
+        dayServed: dayComplete ? 0 : newDayServed,
+        day: newDay,
+        dayTarget: dayComplete ? prev.dayTarget + 2 : prev.dayTarget,
+        location: Math.floor((newDay - 1) / 3) % 3,
+        lives: dayComplete ? Math.min(5, prev.lives + 1) : prev.lives,
         customers: prev.customers
           .filter((c) => c.id !== cust.id)
           .map((c) => (isKid ? { ...c, bonusMs: c.bonusMs + 4000 } : c)),
@@ -628,9 +696,9 @@ function MenuScreen({
         <p className="font-bold text-stone-700">چطور بازی کنم؟</p>
         مشتری‌ها سفارش ذرت مکزیکی، اسنک مرغ یا اسنک پیتزایی می‌دن.
         روی مشتری بزن، مواد خواسته‌شده رو به ظرف اضافه کن، بعد «سرو» بزن.
-        سریع بزن تا کمبو 🔥 بالاتر بره! هر چند مشتری، یک
-        <span className="font-bold text-red-600"> بچه‌ی کار </span>
-        میاد — نذری بده و دل ❤️ جمع کن.
+        سریع بزن تا کمبو 🔥 بالاتر بره! با سرو مشتری‌ها مرحله‌ها رو رد کن
+        و لوکیشن‌های جدید (بازار، پارک، جشنواره) رو باز کن.
+        هر چند مشتری، یک <span className="font-bold text-red-600">بچه‌ی کار</span> میاد — نذری بده و دل ❤️ جمع کن.
       </div>
 
       <div className="mt-auto w-full pt-4 text-center text-[11px] leading-5 text-stone-400">
@@ -696,6 +764,19 @@ function GameScreen({
           >
             {game.muted ? '🔇' : '🔊'}
           </button>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-2 rounded-2xl bg-white/70 px-3 py-1.5 shadow-sm">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-black text-red-600">مرحله {game.day.toLocaleString('fa-IR')}</span>
+          <span className="text-[10px] font-bold text-stone-500">🗺️ {LOCATIONS[game.location]}</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="h-2 w-20 overflow-hidden rounded-full bg-stone-200">
+            <div className="h-full bg-gradient-to-l from-green-500 to-emerald-500" style={{ width: `${Math.min(100, (game.dayServed / game.dayTarget) * 100)}%` }} />
+          </div>
+          <span className="text-[10px] font-bold text-stone-500">{game.dayServed.toLocaleString('fa-IR')}/{game.dayTarget.toLocaleString('fa-IR')}</span>
         </div>
       </div>
 
@@ -1008,7 +1089,13 @@ function GameOverScreen({
             {game.highScore.toLocaleString('fa-IR')}
           </span>
         </div>
-        <div className="grid grid-cols-2 gap-2 border-t border-stone-100 pt-2 text-center">
+        <div className="grid grid-cols-3 gap-2 border-t border-stone-100 pt-2 text-center">
+          <div>
+            <div className="text-lg font-black text-stone-700">
+              {game.day.toLocaleString('fa-IR')}
+            </div>
+            <div className="text-[10px] text-stone-400">مرحله</div>
+          </div>
           <div>
             <div className="text-lg font-black text-stone-700">
               {game.servedCount.toLocaleString('fa-IR')}
