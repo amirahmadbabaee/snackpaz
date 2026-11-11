@@ -9,22 +9,100 @@ import { Button } from '@/components/ui/button';
 /* ============================================================
    بازی «دختر اسنک‌پز» — توسعه‌دهنده: امیراحمد بابائی (amirahmadbabee)
    برند واقعی: اسنک‌پز (مهسا) | پیج: @snackpaz
+   سه محصول: ذرت مکزیکی، اسنک مرغ، اسنک پیتزایی
    ============================================================ */
 
-// ---------- انواع ----------
 type Screen = 'menu' | 'playing' | 'gameover';
-type IngId = 'butter' | 'lemon' | 'cheese' | 'sauce';
+type ProductId = 'corn' | 'chicken' | 'pizza';
+type Ing = { id: string; label: string; emoji: string; ring: string; color: string };
+
+const PRODUCTS: Record<
+  ProductId,
+  {
+    id: ProductId;
+    label: string;
+    emoji: string;
+    baseEmoji: string;
+    baseLabel: string;
+    baseColor: string;
+    baseScore: number;
+    visual: 'cup' | 'wrap' | 'pizza';
+    ingredients: Ing[];
+  }
+> = {
+  corn: {
+    id: 'corn',
+    label: 'ذرت مکزیکی',
+    emoji: '🌽',
+    baseEmoji: '🌽',
+    baseLabel: 'ذرت',
+    baseColor: '#ca8a04',
+    baseScore: 10,
+    visual: 'cup',
+    ingredients: [
+      { id: 'butter', label: 'کره', emoji: '🧈', ring: 'ring-amber-400', color: '#fde68a' },
+      { id: 'lemon', label: 'لیمونمک', emoji: '🍋', ring: 'ring-yellow-400', color: '#fef08a' },
+      { id: 'cheese', label: 'پودر پنیر', emoji: '🧀', ring: 'ring-orange-400', color: '#fdba74' },
+      { id: 'sauce', label: 'سس تند', emoji: '🌶️', ring: 'ring-red-400', color: '#fca5a5' },
+    ],
+  },
+  chicken: {
+    id: 'chicken',
+    label: 'اسنک مرغ',
+    emoji: '🍗',
+    baseEmoji: '🥖',
+    baseLabel: 'نان',
+    baseColor: '#a16207',
+    baseScore: 20,
+    visual: 'wrap',
+    ingredients: [
+      { id: 'chicken', label: 'مرغ', emoji: '🍗', ring: 'ring-amber-400', color: '#fcd34d' },
+      { id: 'garlicsauce', label: 'سس مایونز', emoji: '🥚', ring: 'ring-yellow-200', color: '#fef9c3' },
+      { id: 'lettuce', label: 'کاهو', emoji: '🥬', ring: 'ring-green-400', color: '#bbf7d0' },
+      { id: 'pickles', label: 'خیارشور', emoji: '🥒', ring: 'ring-green-500', color: '#86efac' },
+    ],
+  },
+  pizza: {
+    id: 'pizza',
+    label: 'اسنک پیتزایی',
+    emoji: '🍕',
+    baseEmoji: '🫓',
+    baseLabel: 'خمیر',
+    baseColor: '#d97706',
+    baseScore: 30,
+    visual: 'pizza',
+    ingredients: [
+      { id: 'tomato', label: 'سس گوجه', emoji: '🍅', ring: 'ring-red-400', color: '#fca5a5' },
+      { id: 'mozzarella', label: 'موزارلا', emoji: '🧀', ring: 'ring-yellow-300', color: '#fde68a' },
+      { id: 'pepperoni', label: 'پپرونی', emoji: '🍖', ring: 'ring-red-500', color: '#f87171' },
+      { id: 'herbs', label: 'سبزیجات', emoji: '🌿', ring: 'ring-green-500', color: '#86efac' },
+    ],
+  },
+};
+
+const PRODUCT_IDS: ProductId[] = ['corn', 'chicken', 'pizza'];
+
+const NORMAL_AVATARS = ['👨', '👩', '🧔', '👱‍♀️', '👴', '👵', '🧑', '👨‍🦰', '👩‍🦱'];
+const NAMES = ['رضا', 'سارا', 'مجید', 'نازی', 'حسن', 'مریم', 'علی', 'فاطمه', 'کاظم', 'زهرا', 'بهرام', 'الهام', 'فرشاد', 'نگار'];
+const KID_NAMES = ['سینا', 'آرش', 'پوریا', 'میثم', 'رها', 'کیان', 'سامان', 'دلارام'];
+const MAP_URL =
+  'https://www.google.com/maps/search/?api=1&query=' +
+  encodeURIComponent('بازار بزرگ ناصر خسرو مسجد نور تهران');
+const DEV_NAME = 'امیراحمد بابائی';
+const DEV_HANDLE = 'amirahmadbabee';
+
 type Customer = {
   id: number;
   kind: 'normal' | 'kid';
   emoji: string;
   name: string;
-  order: IngId[];
+  productId: ProductId;
+  ingredients: string[];
   bornAt: number;
   maxPatienceMs: number;
   bonusMs: number;
-  rush?: boolean;
 };
+
 type Game = {
   screen: Screen;
   score: number;
@@ -35,7 +113,7 @@ type Game = {
   comboUntil: number;
   customers: Customer[];
   selectedId: number | null;
-  cup: IngId[];
+  cup: string[];
   nextSpawnAt: number;
   nextCid: number;
   servedCount: number;
@@ -46,23 +124,6 @@ type Game = {
   runId: number;
 };
 
-// ---------- ثابت‌ها ----------
-const TOPPINGS: { id: IngId; label: string; emoji: string; ring: string }[] = [
-  { id: 'butter', label: 'کره', emoji: '🧈', ring: 'ring-amber-400' },
-  { id: 'lemon', label: 'لیمونمک', emoji: '🍋', ring: 'ring-yellow-400' },
-  { id: 'cheese', label: 'پودر پنیر', emoji: '🧀', ring: 'ring-orange-400' },
-  { id: 'sauce', label: 'سس تند', emoji: '🌶️', ring: 'ring-red-400' },
-];
-const NORMAL_AVATARS = ['👨', '👩', '🧔', '👱‍♀️', '👴', '👵', '🧑', '👨‍🦰', '👩‍🦱'];
-const NAMES = ['رضا', 'سارا', 'مجید', 'نازی', 'حسن', 'مریم', 'علی', 'فاطمه', 'کاظم', 'زهرا', 'بهرام', 'الهام', 'فرشاد', 'نگار'];
-const KID_NAMES = ['سینا', 'آرش', 'پوریا', 'میثم', 'رها', 'کیان', 'سامان', 'دلارام'];
-const MAP_URL =
-  'https://www.google.com/maps/search/?api=1&query=' +
-  encodeURIComponent('بازار بزرگ ناصر خسرو مسجد نور تهران');
-const DEV_NAME = 'امیراحمد بابائی';
-const DEV_HANDLE = 'amirahmadbabee';
-
-// ---------- توابع کمکی ----------
 function loadHigh(): number {
   if (typeof window === 'undefined') return 0;
   try {
@@ -72,13 +133,16 @@ function loadHigh(): number {
   }
 }
 
-function makeOrder(): IngId[] {
-  const n = 1 + Math.floor(Math.random() * 4); // ۱ تا ۴ تاپینگ
-  return [...TOPPINGS].sort(() => Math.random() - 0.5).slice(0, n).map((t) => t.id);
+function makeOrder(productId: ProductId): string[] {
+  const ings = PRODUCTS[productId].ingredients;
+  const n = 1 + Math.floor(Math.random() * ings.length); // ۱ تا همه
+  return [...ings].sort(() => Math.random() - 0.5).slice(0, n).map((i) => i.id);
 }
 
 function makeCustomer(id: number, score: number, rush: boolean, isKid: boolean, now: number): Customer {
   const base = rush ? 8000 : Math.max(9000, 16000 - score * 8);
+  // احتمال مساوی برای هر محصول
+  const productId = isKid ? PRODUCT_IDS[Math.floor(Math.random() * 3)] : PRODUCT_IDS[Math.floor(Math.random() * 3)];
   return {
     id,
     kind: isKid ? 'kid' : 'normal',
@@ -86,11 +150,11 @@ function makeCustomer(id: number, score: number, rush: boolean, isKid: boolean, 
     name: isKid
       ? KID_NAMES[Math.floor(Math.random() * KID_NAMES.length)]
       : NAMES[Math.floor(Math.random() * NAMES.length)],
-    order: makeOrder(),
+    productId,
+    ingredients: makeOrder(productId),
     bornAt: now,
     maxPatienceMs: base,
     bonusMs: 0,
-    rush,
   };
 }
 
@@ -99,7 +163,6 @@ function patienceOf(c: Customer, now: number): number {
   return Math.max(0, Math.min(1, 1 - (now - c.bornAt) / max));
 }
 
-// ---------- صدا (Web Audio) ----------
 let audioCtx: AudioContext | null = null;
 function getCtx(): AudioContext | null {
   if (typeof window === 'undefined') return null;
@@ -168,7 +231,6 @@ function playSound(kind: string, muted: boolean) {
   }
 }
 
-// ---------- ریختار اولیه ----------
 function initialGame(): Game {
   return {
     screen: 'menu',
@@ -192,7 +254,6 @@ function initialGame(): Game {
   };
 }
 
-// ---------- حلقه‌ی زمان (خالص و بی‌عوارض جانبی) ----------
 function tick(prev: Game): Game {
   if (prev.screen !== 'playing') return prev;
   const now = Date.now();
@@ -206,7 +267,6 @@ function tick(prev: Game): Game {
   let nextCid = prev.nextCid;
   let kidCounter = prev.kidCounter;
 
-  // خروج مشتری ناراحت
   const stillWaiting = customers.filter((c) => patienceOf(c, now) > 0);
   const angryCount = customers.length - stillWaiting.length;
   if (angryCount > 0) {
@@ -216,13 +276,11 @@ function tick(prev: Game): Game {
     customers = stillWaiting;
   }
 
-  // افت کمبو
   if (comboUntil && now > comboUntil) {
     combo = 0;
     comboUntil = 0;
   }
 
-  // تولید مشتری جدید
   if (now >= nextSpawnAt && customers.length < 5) {
     const interval = inRush
       ? Math.max(1200, 2600 - prev.score * 6)
@@ -238,24 +296,14 @@ function tick(prev: Game): Game {
     nextCid += 1;
   }
 
-  // پایان بازی
   if (lives <= 0) {
     const high = Math.max(prev.highScore, prev.score);
-    return {
-      ...prev,
-      screen: 'gameover',
-      lives: 0,
-      customers,
-      combo: 0,
-      comboUntil: 0,
-      highScore: high,
-    };
+    return { ...prev, screen: 'gameover', lives: 0, customers, combo: 0, comboUntil: 0, highScore: high };
   }
 
   return { ...prev, customers, lives, combo, comboUntil, nextSpawnAt, nextCid, kidCounter };
 }
 
-// ---------- مؤلفه‌ی اصلی ----------
 export default function SnackPazGame() {
   const [game, setGame] = useState<Game>(() => initialGame());
   const gameRef = useRef<Game>(game);
@@ -263,7 +311,6 @@ export default function SnackPazGame() {
     gameRef.current = game;
   }, [game]);
 
-  // ذخیره‌ی رکورد
   useEffect(() => {
     try {
       localStorage.setItem('snackpaz_highscore', String(game.highScore));
@@ -272,19 +319,16 @@ export default function SnackPazGame() {
     }
   }, [game.highScore]);
 
-  // صدای پایان
   useEffect(() => {
     if (game.screen === 'gameover') playSound('over', game.muted);
   }, [game.screen, game.muted]);
 
-  // حلقه‌ی تیک
   useEffect(() => {
     if (game.screen !== 'playing') return;
     const iv = setInterval(() => setGame((prev) => tick(prev)), 200);
     return () => clearInterval(iv);
   }, [game.screen]);
 
-  // اکشن‌ها
   const startGame = () => {
     playSound('start', gameRef.current.muted);
     const now = Date.now();
@@ -300,12 +344,15 @@ export default function SnackPazGame() {
 
   const onSelect = (id: number) => {
     playSound('tap', gameRef.current.muted);
-    setGame((prev) =>
-      prev.selectedId === id ? { ...prev, selectedId: null } : { ...prev, selectedId: id },
-    );
+    setGame((prev) => {
+      const wasSelected = prev.selectedId === id;
+      return wasSelected
+        ? { ...prev, selectedId: null, cup: [] }
+        : { ...prev, selectedId: id, cup: [] };
+    });
   };
 
-  const onToggle = (ing: IngId) => {
+  const onToggle = (ing: string) => {
     const g = gameRef.current;
     if (g.screen !== 'playing') return;
     playSound('tap', g.muted);
@@ -329,13 +376,14 @@ export default function SnackPazGame() {
       return;
     }
     const cupSet = new Set(g.cup);
-    const orderSet = new Set(cust.order);
-    const match = cupSet.size === orderSet.size && [...cupSet].every((x) => orderSet.has(x));
+    const orderSet = new Set(cust.ingredients);
+    const match =
+      cupSet.size === orderSet.size && [...cupSet].every((x) => orderSet.has(x));
     const now = Date.now();
 
     if (!match) {
       playSound('bad', g.muted);
-      toast.error('اشتباه! سفارش رو با لیوان چک کن 🌽');
+      toast.error('اشتباه! سفارش رو با چیزی که می‌سازی چک کن 🌽');
       setGame((prev) => ({
         ...prev,
         cup: [],
@@ -362,7 +410,7 @@ export default function SnackPazGame() {
     setGame((prev) => {
       const pCombo = prev.combo + 1;
       const pMult = Math.min(pCombo, 5);
-      const base = isKid ? 50 : 10;
+      const base = isKid ? 50 : PRODUCTS[cust.productId].baseScore;
       const points = base * pMult;
       const coinsGain = isKid ? 0 : 1 + (pMult >= 3 ? 1 : 0);
       return {
@@ -404,7 +452,6 @@ export default function SnackPazGame() {
   const [lbOpen, setLbOpen] = useState(false);
   const submittedRun = useRef(0);
 
-  // ثبت امتیاز در اکانت کاربر هنگام پایان بازی
   useEffect(() => {
     if (
       game.screen === 'gameover' &&
@@ -447,15 +494,7 @@ export default function SnackPazGame() {
       <div className="mx-auto flex min-h-screen w-full max-w-md flex-col">
         <AnimatePresence mode="wait">
           {game.screen === 'menu' && (
-            <MenuScreen
-              key="menu"
-              game={game}
-              onStart={startGame}
-              session={session}
-              onOpenAuth={() => setAuthOpen(true)}
-              onOpenLeaderboard={() => setLbOpen(true)}
-              onSignOut={onSignOut}
-            />
+            <MenuScreen key="menu" game={game} onStart={startGame} />
           )}
           {game.screen === 'playing' && (
             <GameScreen
@@ -529,6 +568,14 @@ function MenuScreen({
         <p className="text-base font-semibold text-stone-500">ماجراجویی چرخ مهسا 🌽</p>
       </div>
 
+      <div className="flex gap-2 text-3xl">
+        {PRODUCT_IDS.map((p) => (
+          <span key={p} title={PRODUCTS[p].label}>
+            {PRODUCTS[p].emoji}
+          </span>
+        ))}
+      </div>
+
       {game.highScore > 0 && (
         <div className="rounded-full bg-white/80 px-5 py-2 text-sm font-bold text-stone-700 shadow">
           🏆 رکورد شما: {game.highScore.toLocaleString('fa-IR')}
@@ -551,7 +598,6 @@ function MenuScreen({
         </Button>
       </a>
 
-      {/* اکانت و جدول امتیاز */}
       <div className="flex w-full max-w-xs items-center gap-2">
         <Button
           onClick={onOpenLeaderboard}
@@ -580,8 +626,8 @@ function MenuScreen({
 
       <div className="mt-2 max-w-xs rounded-2xl bg-white/70 p-3 text-xs leading-6 text-stone-600 shadow-sm">
         <p className="font-bold text-stone-700">چطور بازی کنم؟</p>
-        مشتری‌ها سفارش ذرت مکزیکی می‌دن. روی مشتری بزن تا انتخاب بشه،
-        مواد خواسته‌شده رو به لیوان اضافه کن، بعد «سرو» بزن.
+        مشتری‌ها سفارش ذرت مکزیکی، اسنک مرغ یا اسنک پیتزایی می‌دن.
+        روی مشتری بزن، مواد خواسته‌شده رو به ظرف اضافه کن، بعد «سرو» بزن.
         سریع بزن تا کمبو 🔥 بالاتر بره! هر چند مشتری، یک
         <span className="font-bold text-red-600"> بچه‌ی کار </span>
         میاد — نذری بده و دل ❤️ جمع کن.
@@ -614,7 +660,7 @@ function GameScreen({
   now: number;
   selected: Customer | null;
   onSelect: (id: number) => void;
-  onToggle: (ing: IngId) => void;
+  onToggle: (ing: string) => void;
   onClear: () => void;
   onServe: () => void;
   onMute: () => void;
@@ -622,6 +668,8 @@ function GameScreen({
   const inRush = now < game.rushUntil;
   const comboRemaining = game.comboUntil > now ? (game.comboUntil - now) / 6000 : 0;
   const mult = Math.min(game.combo, 5);
+  const selProduct = selected ? PRODUCTS[selected.productId] : null;
+  const ingredients = selProduct ? selProduct.ingredients : [];
 
   return (
     <motion.div
@@ -630,7 +678,6 @@ function GameScreen({
       exit={{ opacity: 0 }}
       className="flex flex-1 flex-col gap-3 p-3"
     >
-      {/* نوار بالایی */}
       <div className="flex items-center justify-between gap-2 rounded-2xl bg-white/85 p-2 shadow-sm backdrop-blur">
         <div className="flex flex-col">
           <span className="text-[10px] font-bold text-stone-400">امتیاز</span>
@@ -652,7 +699,6 @@ function GameScreen({
         </div>
       </div>
 
-      {/* کمبو و راش */}
       <div className="flex h-8 items-center gap-2">
         {mult >= 2 && (
           <div className="flex items-center gap-2 rounded-full bg-gradient-to-l from-orange-500 to-red-500 px-3 py-1 text-sm font-black text-white shadow">
@@ -669,7 +715,6 @@ function GameScreen({
         )}
       </div>
 
-      {/* صف مشتری‌ها */}
       <div className="rounded-2xl bg-white/70 p-2 shadow-sm">
         <div className="mb-1 flex items-center justify-between px-1">
           <span className="text-xs font-bold text-stone-500">مشتری‌ها</span>
@@ -695,50 +740,33 @@ function GameScreen({
         </div>
       </div>
 
-      {/* سفارش انتخاب‌شده + لیوان */}
       <div className="rounded-2xl bg-white/85 p-3 shadow-sm">
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-xs font-bold text-stone-500">لیوان ذرت</span>
+          <span className="text-xs font-bold text-stone-500">
+            {selProduct ? `ظرف ${selProduct.label}` : 'ظرف'}
+          </span>
           {selected ? (
             <span className="text-xs font-bold text-red-600">
-              سفارشِ {selected.name}: {toppingEmojis(selected.order)} (+🌽)
+              سفارشِ {selected.name}: {PRODUCTS[selected.productId].emoji}{' '}
+              {ingredientEmojis(selected.productId, selected.ingredients)}
             </span>
           ) : (
             <span className="text-xs text-stone-400">مشتری‌ای انتخاب نشده</span>
           )}
         </div>
 
-        {/* لیوان */}
         <div className="flex items-end gap-3">
-          <div className="relative flex h-28 w-24 flex-col-reverse overflow-hidden rounded-b-2xl rounded-t-md border-2 border-amber-300 bg-amber-50 shadow-inner">
-            <div className="flex h-5 items-center justify-center bg-yellow-600 text-[10px] font-bold text-white">
-              🌽 ذرت
-            </div>
-            {game.cup.map((ing, i) => {
-              const t = TOPPINGS.find((x) => x.id === ing)!;
-              return (
-                <motion.div
-                  key={`${ing}-${i}`}
-                  initial={{ scale: 0, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  className="flex h-6 items-center justify-center gap-1 text-sm font-bold"
-                  style={{ backgroundColor: layerColor(ing) }}
-                >
-                  <span>{t.emoji}</span>
-                </motion.div>
-              );
-            })}
-          </div>
+          <ProductVisual product={selProduct} cup={game.cup} />
 
-          {/* دکمه‌های مواد */}
           <div className="grid flex-1 grid-cols-2 gap-2">
-            {TOPPINGS.map((t) => {
+            {ingredients.map((t) => {
               const active = game.cup.includes(t.id);
               return (
                 <button
                   key={t.id}
                   onClick={() => onToggle(t.id)}
-                  className={`flex items-center justify-center gap-1 rounded-xl border-2 py-2 text-sm font-bold transition active:scale-95 ${
+                  disabled={!selProduct}
+                  className={`flex items-center justify-center gap-1 rounded-xl border-2 py-2 text-sm font-bold transition active:scale-95 disabled:opacity-40 ${
                     active
                       ? `${t.ring} border-transparent bg-white shadow`
                       : 'border-stone-200 bg-stone-50 text-stone-600'
@@ -752,7 +780,6 @@ function GameScreen({
           </div>
         </div>
 
-        {/* اکشن‌ها */}
         <div className="mt-3 flex gap-2">
           <Button
             onClick={onClear}
@@ -771,7 +798,6 @@ function GameScreen({
         </div>
       </div>
 
-      {/* چرخ مهسا */}
       <div className="mt-auto flex items-center gap-3 rounded-2xl bg-gradient-to-l from-amber-700 to-amber-900 p-3 text-white shadow-lg">
         <img
           src="/brand-logo.jpg"
@@ -799,6 +825,95 @@ function Stat({ icon, value, title }: { icon: string; value: number; title: stri
   );
 }
 
+function ProductVisual({
+  product,
+  cup,
+}: {
+  product: (typeof PRODUCTS)[ProductId] | null;
+  cup: string[];
+}) {
+  if (!product) {
+    return (
+      <div className="flex h-28 w-24 items-center justify-center rounded-2xl border-2 border-dashed border-stone-200 bg-stone-50 text-xs text-stone-400">
+        مشتری انتخاب کن
+      </div>
+    );
+  }
+  if (product.visual === 'cup') {
+    return (
+      <div className="relative flex h-28 w-24 flex-col-reverse overflow-hidden rounded-b-2xl rounded-t-md border-2 border-amber-300 bg-amber-50 shadow-inner">
+        <div className="flex h-5 items-center justify-center text-[10px] font-bold text-white" style={{ backgroundColor: product.baseColor }}>
+          {product.baseEmoji} {product.baseLabel}
+        </div>
+        {cup.map((ing, i) => {
+          const t = product.ingredients.find((x) => x.id === ing);
+          if (!t) return null;
+          return (
+            <motion.div
+              key={`${ing}-${i}`}
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="flex h-6 items-center justify-center text-sm font-bold"
+              style={{ backgroundColor: t.color }}
+            >
+              {t.emoji}
+            </motion.div>
+          );
+        })}
+      </div>
+    );
+  }
+  if (product.visual === 'wrap') {
+    return (
+      <div className="relative flex h-28 w-24 flex-col-reverse overflow-hidden rounded-2xl border-2 border-amber-700 bg-amber-100 shadow-inner">
+        <div className="flex h-5 items-center justify-center text-[10px] font-bold text-white" style={{ backgroundColor: product.baseColor }}>
+          {product.baseEmoji} {product.baseLabel}
+        </div>
+        {cup.map((ing, i) => {
+          const t = product.ingredients.find((x) => x.id === ing);
+          if (!t) return null;
+          return (
+            <motion.div
+              key={`${ing}-${i}`}
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="flex h-6 items-center justify-center text-sm font-bold"
+              style={{ backgroundColor: t.color }}
+            >
+              {t.emoji}
+            </motion.div>
+          );
+        })}
+      </div>
+    );
+  }
+  // pizza: دایره
+  return (
+    <div className="flex h-28 w-24 items-center justify-center">
+      <div className="relative flex h-24 w-24 flex-col-reverse overflow-hidden rounded-full border-4 border-amber-700 bg-amber-100 shadow-inner">
+        <div className="flex h-5 items-center justify-center text-[10px] font-bold text-white" style={{ backgroundColor: product.baseColor }}>
+          {product.baseEmoji}
+        </div>
+        {cup.map((ing, i) => {
+          const t = product.ingredients.find((x) => x.id === ing);
+          if (!t) return null;
+          return (
+            <motion.div
+              key={`${ing}-${i}`}
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="flex h-5 items-center justify-center text-sm font-bold"
+              style={{ backgroundColor: t.color }}
+            >
+              {t.emoji}
+            </motion.div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function CustomerCard({
   c,
   now,
@@ -812,6 +927,7 @@ function CustomerCard({
 }) {
   const p = patienceOf(c, now);
   const barColor = p > 0.5 ? 'bg-green-500' : p > 0.25 ? 'bg-yellow-500' : 'bg-red-500';
+  const prod = PRODUCTS[c.productId];
   return (
     <motion.button
       layout
@@ -834,7 +950,8 @@ function CustomerCard({
       )}
       <span className="text-3xl">{c.emoji}</span>
       <span className="text-[10px] font-bold text-stone-600">{c.name}</span>
-      <div className="flex gap-0.5 text-xs">{toppingEmojis(c.order)}</div>
+      <span className="text-lg">{prod.emoji}</span>
+      <div className="flex gap-0.5 text-xs">{ingredientEmojis(c.productId, c.ingredients)}</div>
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-stone-200">
         <div className={`h-full ${barColor}`} style={{ width: `${p * 100}%` }} />
       </div>
@@ -943,21 +1060,9 @@ function GameOverScreen({
 /* ============================================================ */
 /* کمک‌های رندر                                                   */
 /* ============================================================ */
-function toppingEmojis(order: IngId[]): string {
-  return order.map((id) => TOPPINGS.find((t) => t.id === id)!.emoji).join('');
-}
-
-function layerColor(ing: IngId): string {
-  switch (ing) {
-    case 'butter':
-      return '#fde68a';
-    case 'lemon':
-      return '#fef08a';
-    case 'cheese':
-      return '#fdba74';
-    case 'sauce':
-      return '#fca5a5';
-  }
+function ingredientEmojis(productId: ProductId, ids: string[]): string {
+  const ings = PRODUCTS[productId].ingredients;
+  return ids.map((id) => ings.find((t) => t.id === id)?.emoji ?? '').join('');
 }
 
 /* ============================================================ */
@@ -1006,10 +1111,7 @@ function AuthModal({ open, onClose }: { open: boolean; onClose: () => void }) {
 
   if (!open) return null;
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
@@ -1122,10 +1224,7 @@ function LeaderboardModal({
 
   if (!open) return null;
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
