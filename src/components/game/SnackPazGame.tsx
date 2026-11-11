@@ -127,6 +127,8 @@ type Game = {
   dayServed: number;
   dayTarget: number;
   location: number;
+  patienceBoost: number;
+  comboWindow: number;
 };
 
 function loadHigh(): number {
@@ -138,14 +140,48 @@ function loadHigh(): number {
   }
 }
 
+function loadWallet(): { coins: number; hearts: number } {
+  if (typeof window === 'undefined') return { coins: 0, hearts: 0 };
+  try {
+    const w = JSON.parse(localStorage.getItem('snackpaz_wallet') || 'null');
+    return w || { coins: 0, hearts: 0 };
+  } catch {
+    return { coins: 0, hearts: 0 };
+  }
+}
+
+function loadUpgrades(): { patience: number; combo: number; lives: number } {
+  if (typeof window === 'undefined') return { patience: 0, combo: 0, lives: 0 };
+  try {
+    const u = JSON.parse(localStorage.getItem('snackpaz_upgrades') || 'null');
+    return u || { patience: 0, combo: 0, lives: 0 };
+  } catch {
+    return { patience: 0, combo: 0, lives: 0 };
+  }
+}
+
+const UPGRADES: {
+  id: 'patience' | 'combo' | 'lives';
+  icon: string;
+  label: string;
+  desc: string;
+  cost: number[];
+  max: number;
+}[] = [
+  { id: 'patience', icon: '⏳', label: 'صبر مشتری', desc: 'مشتری‌ها آروم‌تر عصبانی می‌شن', cost: [50, 100, 200, 400], max: 4 },
+  { id: 'combo', icon: '🔥', label: 'پنجره‌ی کمبو', desc: 'وقتِ بیشتری برای زدنِ کمبو داری', cost: [40, 80, 160, 320], max: 4 },
+  { id: 'lives', icon: '⭐', label: 'فرصت اضافه', desc: 'با فرصتِ بیشتر شروع کن', cost: [100, 250, 500], max: 3 },
+];
+
 function makeOrder(productId: ProductId): string[] {
   const ings = PRODUCTS[productId].ingredients;
   const n = 1 + Math.floor(Math.random() * ings.length); // ۱ تا همه
   return [...ings].sort(() => Math.random() - 0.5).slice(0, n).map((i) => i.id);
 }
 
-function makeCustomer(id: number, day: number, rush: boolean, isKid: boolean, now: number): Customer {
+function makeCustomer(id: number, day: number, rush: boolean, isKid: boolean, now: number, patienceBoost = 0): Customer {
   const base = rush ? 7500 : Math.max(7000, 15000 - day * 500);
+  const maxPatienceMs = Math.round(base * (1 + patienceBoost * 0.12));
   // احتمال مساوی برای هر محصول
   const productId = isKid ? PRODUCT_IDS[Math.floor(Math.random() * 3)] : PRODUCT_IDS[Math.floor(Math.random() * 3)];
   return {
@@ -158,7 +194,7 @@ function makeCustomer(id: number, day: number, rush: boolean, isKid: boolean, no
     productId,
     ingredients: makeOrder(productId),
     bornAt: now,
-    maxPatienceMs: base,
+    maxPatienceMs,
     bonusMs: 0,
   };
 }
@@ -305,6 +341,8 @@ function initialGame(): Game {
     dayServed: 0,
     dayTarget: 6,
     location: 0,
+    patienceBoost: 0,
+    comboWindow: 6000,
   };
 }
 
@@ -346,7 +384,7 @@ function tick(prev: Game): Game {
       isKid = true;
       kidCounter = 3 + Math.floor(Math.random() * 3);
     }
-    customers = [...customers, makeCustomer(nextCid, prev.day, inRush, isKid, now)];
+    customers = [...customers, makeCustomer(nextCid, prev.day, inRush, isKid, now, prev.patienceBoost)];
     nextCid += 1;
   }
 
@@ -364,6 +402,31 @@ export default function SnackPazGame() {
   useEffect(() => {
     gameRef.current = game;
   }, [game]);
+
+  const [wallet, setWallet] = useState<{ coins: number; hearts: number }>(() => loadWallet());
+  const [upgrades, setUpgrades] = useState<{ patience: number; combo: number; lives: number }>(() => loadUpgrades());
+  const upgradesRef = useRef(upgrades);
+  useEffect(() => {
+    upgradesRef.current = upgrades;
+  }, [upgrades]);
+  const [shopOpen, setShopOpen] = useState(false);
+  const creditedRun = useRef(0);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('snackpaz_wallet', JSON.stringify(wallet));
+    } catch {
+      /* ignore */
+    }
+  }, [wallet]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('snackpaz_upgrades', JSON.stringify(upgrades));
+    } catch {
+      /* ignore */
+    }
+  }, [upgrades]);
 
   useEffect(() => {
     try {
@@ -393,6 +456,9 @@ export default function SnackPazGame() {
       highScore: prev.highScore,
       muted: prev.muted,
       runId: prev.runId + 1,
+      lives: 3 + upgradesRef.current.lives,
+      patienceBoost: upgradesRef.current.patience,
+      comboWindow: 6000 + upgradesRef.current.combo * 1500,
     }));
   };
 
@@ -480,7 +546,7 @@ export default function SnackPazGame() {
         ...prev,
         cup: [],
         combo: pCombo,
-        comboUntil: now + 6000,
+        comboUntil: now + prev.comboWindow,
         score: prev.score + points,
         coins: prev.coins + coinsGain,
         hearts: prev.hearts + (isKid ? 1 : 0),
@@ -519,6 +585,35 @@ export default function SnackPazGame() {
   const [authOpen, setAuthOpen] = useState(false);
   const [lbOpen, setLbOpen] = useState(false);
   const submittedRun = useRef(0);
+
+  // انتقال سکه و دلِ این بازی به wallet
+  useEffect(() => {
+    if (game.screen === 'gameover' && creditedRun.current !== game.runId) {
+      creditedRun.current = game.runId;
+      if (game.coins > 0 || game.hearts > 0) {
+        setWallet((w) => ({ coins: w.coins + game.coins, hearts: w.hearts + game.hearts }));
+        toast.success(`🪙 ${game.coins.toLocaleString('fa-IR')} سکه و ${game.hearts.toLocaleString('fa-IR')} دل ❤️ به کیف پولت اضافه شد!`);
+      }
+    }
+  }, [game.screen, game.runId, game.coins, game.hearts]);
+
+  const buyUpgrade = (id: 'patience' | 'combo' | 'lives') => {
+    const u = UPGRADES.find((x) => x.id === id)!;
+    const lvl = upgrades[id];
+    if (lvl >= u.max) {
+      toast('این ارتقا در بیشترین سطحشه');
+      return;
+    }
+    const cost = u.cost[lvl];
+    if (wallet.coins < cost) {
+      toast.error(`سکه کافی نیست! نیاز: ${cost.toLocaleString('fa-IR')} 🪙`);
+      return;
+    }
+    playSound('ok', gameRef.current.muted);
+    setWallet((w) => ({ ...w, coins: w.coins - cost }));
+    setUpgrades((up) => ({ ...up, [id]: up[id] + 1 }));
+    toast.success(`${u.label} به سطح ${(lvl + 2).toLocaleString('fa-IR')} ارتقا یافت! 🎉`);
+  };
 
   useEffect(() => {
     if (
@@ -562,7 +657,17 @@ export default function SnackPazGame() {
       <div className="mx-auto flex min-h-screen w-full max-w-md flex-col">
         <AnimatePresence mode="wait">
           {game.screen === 'menu' && (
-            <MenuScreen key="menu" game={game} onStart={startGame} />
+            <MenuScreen
+              key="menu"
+              game={game}
+              wallet={wallet}
+              onStart={startGame}
+              onOpenShop={() => setShopOpen(true)}
+              session={session}
+              onOpenAuth={() => setAuthOpen(true)}
+              onOpenLeaderboard={() => setLbOpen(true)}
+              onSignOut={onSignOut}
+            />
           )}
           {game.screen === 'playing' && (
             <GameScreen
@@ -585,6 +690,7 @@ export default function SnackPazGame() {
 
       <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} />
       <LeaderboardModal open={lbOpen} onClose={() => setLbOpen(false)} session={session} />
+      <ShopModal open={shopOpen} onClose={() => setShopOpen(false)} wallet={wallet} upgrades={upgrades} onBuy={buyUpgrade} />
     </div>
   );
 }
@@ -594,14 +700,18 @@ export default function SnackPazGame() {
 /* ============================================================ */
 function MenuScreen({
   game,
+  wallet,
   onStart,
+  onOpenShop,
   session,
   onOpenAuth,
   onOpenLeaderboard,
   onSignOut,
 }: {
   game: Game;
+  wallet: { coins: number; hearts: number };
   onStart: () => void;
+  onOpenShop: () => void;
   session: { user?: { name?: string | null; email?: string | null } } | null;
   onOpenAuth: () => void;
   onOpenLeaderboard: () => void;
@@ -649,6 +759,23 @@ function MenuScreen({
           🏆 رکورد شما: {game.highScore.toLocaleString('fa-IR')}
         </div>
       )}
+
+      {/* کیف پول */}
+      <div className="flex w-full max-w-xs items-center gap-2">
+        <div className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-amber-100 py-2 text-sm font-black text-amber-700 shadow-sm">
+          🪙 {wallet.coins.toLocaleString('fa-IR')}
+        </div>
+        <div className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-pink-100 py-2 text-sm font-black text-pink-600 shadow-sm">
+          ❤️ {wallet.hearts.toLocaleString('fa-IR')}
+        </div>
+      </div>
+
+      <Button
+        onClick={onOpenShop}
+        className="h-12 w-full max-w-xs rounded-2xl bg-gradient-to-l from-amber-600 to-yellow-600 text-sm font-black text-white shadow active:scale-95"
+      >
+        🛒 ارتقای چرخ
+      </Button>
 
       <Button
         onClick={onStart}
@@ -734,7 +861,7 @@ function GameScreen({
   onMute: () => void;
 }) {
   const inRush = now < game.rushUntil;
-  const comboRemaining = game.comboUntil > now ? (game.comboUntil - now) / 6000 : 0;
+  const comboRemaining = game.comboUntil > now ? (game.comboUntil - now) / game.comboWindow : 0;
   const mult = Math.min(game.combo, 5);
   const selProduct = selected ? PRODUCTS[selected.productId] : null;
   const ingredients = selProduct ? selProduct.ingredients : [];
@@ -1366,6 +1493,93 @@ function LeaderboardModal({
             برای ثبت امتیازت در جدول، اول وارد شو.
           </p>
         )}
+      </motion.div>
+    </div>
+  );
+}
+
+/* ============================================================ */
+/* مودال ارتقای چرخ                                               */
+/* ============================================================ */
+function ShopModal({
+  open,
+  onClose,
+  wallet,
+  upgrades,
+  onBuy,
+}: {
+  open: boolean;
+  onClose: () => void;
+  wallet: { coins: number; hearts: number };
+  upgrades: { patience: number; combo: number; lives: number };
+  onBuy: (id: 'patience' | 'combo' | 'lives') => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        onClick={(e) => e.stopPropagation()}
+        className="max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl"
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-xl font-black text-stone-700">🛒 ارتقای چرخ</h3>
+          <button onClick={onClose} className="text-stone-400" aria-label="بستن">
+            ✕
+          </button>
+        </div>
+
+        <div className="mb-4 flex items-center justify-center gap-2 rounded-xl bg-amber-50 py-2 text-sm font-black text-amber-700">
+          🪙 {wallet.coins.toLocaleString('fa-IR')} سکه
+          <span className="mx-1 text-stone-300">|</span>
+          ❤️ {wallet.hearts.toLocaleString('fa-IR')} دل
+        </div>
+
+        <div className="space-y-2.5">
+          {UPGRADES.map((u) => {
+            const lvl = upgrades[u.id];
+            const maxed = lvl >= u.max;
+            const cost = maxed ? 0 : u.cost[lvl];
+            const afford = wallet.coins >= cost;
+            return (
+              <div key={u.id} className="rounded-2xl border-2 border-stone-100 bg-stone-50 p-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">{u.icon}</span>
+                  <div className="flex-1">
+                    <p className="text-sm font-black text-stone-800">{u.label}</p>
+                    <p className="text-[10px] leading-4 text-stone-500">{u.desc}</p>
+                  </div>
+                  <div className="flex gap-0.5">
+                    {Array.from({ length: u.max }).map((_, i) => (
+                      <span
+                        key={i}
+                        className={`h-2 w-2 rounded-full ${i < lvl ? 'bg-green-500' : 'bg-stone-200'}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <Button
+                  onClick={() => onBuy(u.id)}
+                  disabled={maxed || !afford}
+                  className={`mt-2 h-9 w-full rounded-xl text-xs font-black active:scale-95 disabled:opacity-50 ${
+                    maxed
+                      ? 'bg-green-500 text-white'
+                      : afford
+                        ? 'bg-gradient-to-l from-amber-500 to-yellow-500 text-white'
+                        : 'bg-stone-200 text-stone-400'
+                  }`}
+                >
+                  {maxed ? '✓ حداکثر' : `ارتقا • 🪙 ${cost.toLocaleString('fa-IR')}`}
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+
+        <p className="mt-3 text-center text-[10px] leading-5 text-stone-400">
+          با سروِ سفارش‌ها سکه 🪙 و با نذری به بچه‌های کار دل ❤️ جمع کن، بعد اینجا خرجشان کن!
+        </p>
       </motion.div>
     </div>
   );
